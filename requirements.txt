@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-dotenv
+telethon
+pytest
+httpx
+sqlalchemy>=2.0
+

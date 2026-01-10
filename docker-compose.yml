@@ -1,0 +1,16 @@
+﻿services:
+  api:
+    build: .
+    container_name: job-hunter-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./data:/app/data
+      - ./job_hunter.session:/app/job_hunter.session
+    restart: unless-stopped
