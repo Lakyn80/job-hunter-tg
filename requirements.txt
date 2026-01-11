@@ -1,8 +1,6 @@
-fastapi
+﻿fastapi
 uvicorn
-python-dotenv
 telethon
-pytest
+python-dotenv
+sqlalchemy
 httpx
-sqlalchemy>=2.0
-

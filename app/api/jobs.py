@@ -1,8 +1,8 @@
-﻿from fastapi import APIRouter, Query
+﻿from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
-from app.db.models import TelegramMessage
+from app.db.database import get_db
+from app.db.models import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -11,26 +11,31 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def list_jobs(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    translate_requested: bool | None = None,
+    db: Session = Depends(get_db),
 ):
-    db: Session = SessionLocal()
-    try:
-        items = (
-            db.query(TelegramMessage)
-            .filter(TelegramMessage.is_job == True)
-            .order_by(TelegramMessage.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+    q = db.query(Job)
 
-        return [
-            {
-                "telegram_id": m.telegram_id,
-                "channel": m.channel,
-                "text": m.text,
-                "created_at": m.created_at,
-            }
-            for m in items
-        ]
-    finally:
-        db.close()
+    if translate_requested is not None:
+        q = q.filter(Job.translate_requested == translate_requested)
+
+    items = (
+        q.order_by(Job.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "id": j.id,
+            "channel": j.channel,
+            "message_id": j.message_id,
+            "title": j.title,
+            "text_original": j.text_original,
+            "text_cs": j.text_cs,
+            "translate_requested": j.translate_requested,
+            "created_at": j.created_at,
+        }
+        for j in items
+    ]

@@ -1,58 +1,119 @@
-﻿# -*- coding: utf-8 -*-
-
-import os
+﻿import os
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
+
+from app.db.database import SessionLocal
+from app.db.repository import job_exists, save_job
 
 load_dotenv()
 
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
-SESSION = os.getenv("TELEGRAM_SESSION")
-LISTEN_CHANNEL = os.getenv("TELEGRAM_LISTEN_CHANNEL")
+SESSION = os.getenv("TELEGRAM_SESSION", "job_hunter")
 
-_client = None
-
-
-def get_client() -> TelegramClient:
-    global _client
-    if _client is None:
-        _client = TelegramClient(
-            SESSION,
-            API_ID,
-            API_HASH,
-        )
-    return _client
+client = TelegramClient(SESSION, API_ID, API_HASH)
 
 
-async def connect_client() -> None:
-    client = get_client()
+# ---- kompatibilita pro testy ----
+def get_client():
+    return client
+# ---------------------------------
 
-    await client.connect()
 
-    if not await client.is_user_authorized():
-        raise RuntimeError("Telegram session není autorizovaná – spusť login_test.py lokálně")
+ALLOWED_SENIORITY = [
+    "junior", "jun", "middle", "mid", "младший", "начальный"
+]
 
-    print("✅ Telegram client přihlášen (session OK)")
+FORBIDDEN_SENIORITY = [
+    "senior", "lead", "team lead", "architect", "principal", "expert", "старший"
+]
 
-    if not LISTEN_CHANNEL:
-        print("⚠️ TELEGRAM_LISTEN_CHANNEL není nastaven")
+ALLOWED_TECH = [
+    "python", "flask", "fastapi", "sql", "postgres", "sqlite",
+    "docker", "rest", "api", "pandas", "react", "javascript", "js", "git"
+]
+
+
+def is_relevant_job(text: str) -> bool:
+    t = text.lower()
+
+    if any(x in t for x in FORBIDDEN_SENIORITY):
+        return False
+
+    if not any(x in t for x in ALLOWED_SENIORITY):
+        return False
+
+    if not any(x in t for x in ALLOWED_TECH):
+        return False
+
+    return True
+
+
+@client.on(events.NewMessage)
+async def handler(event):
+    if not event.text:
         return
 
-    print(f"📜 Načítám posledních 50 zpráv z {LISTEN_CHANNEL}")
+    text = event.text.strip()
 
-    async for message in client.iter_messages(LISTEN_CHANNEL, limit=50):
-        if message.text:
-            print(f"[HIST] {message.date} | {message.text[:300]}")
+    if not is_relevant_job(text):
+        return
 
-    @client.on(events.NewMessage(chats=LISTEN_CHANNEL))
-    async def handler(event):
-        if event.message.text:
-            print(f"[NEW] {event.message.date} | {event.message.text[:300]}")
+    channel = event.chat.username or str(event.chat_id)
+    message_id = event.id
+    title = text.splitlines()[0][:500]
+
+    db = SessionLocal()
+    try:
+        if job_exists(db, channel, message_id):
+            return
+
+        save_job(
+            db=db,
+            channel=channel,
+            message_id=message_id,
+            title=title,
+            text_original=text,
+        )
+    finally:
+        db.close()
 
 
-async def disconnect_client() -> None:
-    global _client
-    if _client:
-        await _client.disconnect()
-        _client = None
+async def connect_client():
+    await client.start()
+    print("✅ Telegram client přihlášen")
+
+    for dialog in await client.get_dialogs():
+        if dialog.name == "Python_Jbs":
+            print("📜 Načítám posledních 50 zpráv z @Python_Jbs")
+            async for msg in client.iter_messages(dialog, limit=50):
+                if not msg.text:
+                    continue
+
+                text = msg.text.strip()
+
+                if not is_relevant_job(text):
+                    continue
+
+                channel = dialog.entity.username or str(dialog.entity.id)
+                message_id = msg.id
+                title = text.splitlines()[0][:500]
+
+                db = SessionLocal()
+                try:
+                    if job_exists(db, channel, message_id):
+                        continue
+
+                    save_job(
+                        db=db,
+                        channel=channel,
+                        message_id=message_id,
+                        title=title,
+                        text_original=text,
+                    )
+                finally:
+                    db.close()
+
+
+async def disconnect_client():
+    await client.disconnect()

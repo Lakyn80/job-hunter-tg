@@ -1,13 +1,20 @@
-# -*- coding: utf-8 -*-
+﻿import asyncio
+import pytest
 
-import asyncio
 from app.telegram.client import get_client
+
+
+pytest.skip(
+    "Login test je ruční utilita, ne automatický test",
+    allow_module_level=True,
+)
+
 
 async def main():
     client = get_client()
     await client.start()
-    me = await client.get_me()
-    print(f'Přihlášen jako: {me.first_name} (@{me.username})')
-    await client.disconnect()
+    print("OK – Telegram client přihlášen")
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    asyncio.run(main())
