@@ -1,7 +1,16 @@
-﻿from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
 from datetime import datetime
 
 from app.db.database import Base
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+
+    id = Column(Integer, primary_key=True)
+    tg_username = Column(String(255), unique=True, index=True, nullable=False)
+    enabled = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Job(Base):

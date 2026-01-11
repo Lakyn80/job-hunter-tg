@@ -1,72 +1,62 @@
-﻿import os
+# -*- coding: utf-8 -*-
+
+import os
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 
 from app.db.database import SessionLocal
+from app.db.models import Channel
 from app.db.repository import job_exists, save_job
 
 load_dotenv()
 
+API_ID = int(os.getenv("TELEGRAM_API_ID"))
+API_HASH = os.getenv("TELEGRAM_API_HASH")
+SESSION = os.getenv("TELEGRAM_SESSION", "job_hunter")
+
 client = None
 
 
-def get_client():
-    return client
-
-
-ALLOWED_SENIORITY = [
-    "junior", "jun", "middle", "mid", "младший", "начальный"
-]
-
-FORBIDDEN_SENIORITY = [
-    "senior", "lead", "team lead", "architect", "principal", "expert", "старший"
-]
-
-ALLOWED_TECH = [
-    "python", "flask", "fastapi", "sql", "postgres", "sqlite",
-    "docker", "rest", "api", "pandas", "react", "javascript", "js", "git"
-]
-
-
-def is_relevant_job(text: str) -> bool:
-    t = text.lower()
-
-    if any(x in t for x in FORBIDDEN_SENIORITY):
-        return False
-
-    if not any(x in t for x in ALLOWED_SENIORITY):
-        return False
-
-    if not any(x in t for x in ALLOWED_TECH):
-        return False
-
-    return True
+def get_enabled_channels():
+    db = SessionLocal()
+    try:
+        channels = (
+            db.query(Channel)
+            .filter(Channel.enabled == True)
+            .all()
+        )
+        return [c.tg_username for c in channels]
+    finally:
+        db.close()
 
 
 async def connect_client():
     global client
 
-    api_id = os.getenv("TELEGRAM_API_ID")
-    api_hash = os.getenv("TELEGRAM_API_HASH")
-    session = os.getenv("TELEGRAM_SESSION", "job_hunter")
+    if client:
+        return client
 
-    if not api_id or not api_hash:
-        raise RuntimeError("Missing TELEGRAM_API_ID or TELEGRAM_API_HASH")
+    client = TelegramClient(SESSION, API_ID, API_HASH)
+    await client.start()
+    print("Telegram client connected")
 
-    client = TelegramClient(session, int(api_id), api_hash)
+    channels = get_enabled_channels()
+    if not channels:
+        print("No channels found in DB ? Telegram listener is idle")
+        return client
 
-    @client.on(events.NewMessage)
+    print(f"Listening to {len(channels)} channels:")
+    for ch in channels:
+        print(f" - {ch}")
+
+    @client.on(events.NewMessage(chats=channels))
     async def handler(event):
-        if not event.text:
-            return
-
-        text = event.text.strip()
-
-        if not is_relevant_job(text):
+        text = event.message.message
+        if not text:
             return
 
         channel = event.chat.username or str(event.chat_id)
-        message_id = event.id
+        message_id = event.message.id
         title = text.splitlines()[0][:500]
 
         db = SessionLocal()
@@ -84,10 +74,12 @@ async def connect_client():
         finally:
             db.close()
 
-    await client.start()
-    print("✅ Telegram client přihlášen")
+    return client
 
 
 async def disconnect_client():
+    global client
     if client:
         await client.disconnect()
+        client = None
+        print("Telegram client disconnected")
