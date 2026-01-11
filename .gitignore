@@ -1,4 +1,25 @@
-venv/
-.env
-*.session
+﻿# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+*.session
+
+# Database / data
+data/
+*.db
+*.sqlite3
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
