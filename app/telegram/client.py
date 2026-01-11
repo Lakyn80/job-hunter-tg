@@ -7,17 +7,11 @@ from app.db.repository import job_exists, save_job
 
 load_dotenv()
 
-API_ID = int(os.getenv("TELEGRAM_API_ID"))
-API_HASH = os.getenv("TELEGRAM_API_HASH")
-SESSION = os.getenv("TELEGRAM_SESSION", "job_hunter")
-
-client = TelegramClient(SESSION, API_ID, API_HASH)
+client = None
 
 
-# ---- kompatibilita pro testy ----
 def get_client():
     return client
-# ---------------------------------
 
 
 ALLOWED_SENIORITY = [
@@ -49,71 +43,51 @@ def is_relevant_job(text: str) -> bool:
     return True
 
 
-@client.on(events.NewMessage)
-async def handler(event):
-    if not event.text:
-        return
+async def connect_client():
+    global client
 
-    text = event.text.strip()
+    api_id = os.getenv("TELEGRAM_API_ID")
+    api_hash = os.getenv("TELEGRAM_API_HASH")
+    session = os.getenv("TELEGRAM_SESSION", "job_hunter")
 
-    if not is_relevant_job(text):
-        return
+    if not api_id or not api_hash:
+        raise RuntimeError("Missing TELEGRAM_API_ID or TELEGRAM_API_HASH")
 
-    channel = event.chat.username or str(event.chat_id)
-    message_id = event.id
-    title = text.splitlines()[0][:500]
+    client = TelegramClient(session, int(api_id), api_hash)
 
-    db = SessionLocal()
-    try:
-        if job_exists(db, channel, message_id):
+    @client.on(events.NewMessage)
+    async def handler(event):
+        if not event.text:
             return
 
-        save_job(
-            db=db,
-            channel=channel,
-            message_id=message_id,
-            title=title,
-            text_original=text,
-        )
-    finally:
-        db.close()
+        text = event.text.strip()
 
+        if not is_relevant_job(text):
+            return
 
-async def connect_client():
+        channel = event.chat.username or str(event.chat_id)
+        message_id = event.id
+        title = text.splitlines()[0][:500]
+
+        db = SessionLocal()
+        try:
+            if job_exists(db, channel, message_id):
+                return
+
+            save_job(
+                db=db,
+                channel=channel,
+                message_id=message_id,
+                title=title,
+                text_original=text,
+            )
+        finally:
+            db.close()
+
     await client.start()
     print("✅ Telegram client přihlášen")
 
-    for dialog in await client.get_dialogs():
-        if dialog.name == "Python_Jbs":
-            print("📜 Načítám posledních 50 zpráv z @Python_Jbs")
-            async for msg in client.iter_messages(dialog, limit=50):
-                if not msg.text:
-                    continue
-
-                text = msg.text.strip()
-
-                if not is_relevant_job(text):
-                    continue
-
-                channel = dialog.entity.username or str(dialog.entity.id)
-                message_id = msg.id
-                title = text.splitlines()[0][:500]
-
-                db = SessionLocal()
-                try:
-                    if job_exists(db, channel, message_id):
-                        continue
-
-                    save_job(
-                        db=db,
-                        channel=channel,
-                        message_id=message_id,
-                        title=title,
-                        text_original=text,
-                    )
-                finally:
-                    db.close()
-
 
 async def disconnect_client():
-    await client.disconnect()
+    if client:
+        await client.disconnect()

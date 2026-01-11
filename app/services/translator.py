@@ -1,41 +1,31 @@
 ﻿import os
 import httpx
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-
-if not DEEPSEEK_API_KEY:
-    raise RuntimeError("Chybí DEEPSEEK_API_KEY v .env")
-
-API_URL = "https://api.deepseek.com/chat/completions"
+API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 
 async def translate_to_cs(text: str) -> str:
-    if not text.strip():
-        return ""
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing DEEPSEEK_API_KEY")
 
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {
-                "role": "system",
-                "content": "Jsi překladač. Přelož text do češtiny. Neodpovídej ničím jiným než překladem."
-            },
-            {
-                "role": "user",
-                "content": text
-            }
+            {"role": "system", "content": "Translate the following job offer to Czech language."},
+            {"role": "user", "content": text},
         ],
         "temperature": 0.2,
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(API_URL, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        r = await client.post(API_URL, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
 
     return data["choices"][0]["message"]["content"].strip()
